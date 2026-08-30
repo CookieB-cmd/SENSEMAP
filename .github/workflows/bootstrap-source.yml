@@ -33,7 +33,9 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf .ci
-          rm -f .github/workflows/bootstrap-source.yml
+          # Workflow files are added separately by the GitHub connector because
+          # GITHUB_TOKEN cannot create/update them from inside an Actions run.
+          rm -f .github/workflows/release-gate.yml
           git config user.name 'SENSEMAP CI Bootstrap'
           git config user.email 'actions@users.noreply.github.com'
           git add -A
