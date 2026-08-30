@@ -42,7 +42,7 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-          cache: true
+          cache: false
 
       - name: Set up Supabase CLI
         uses: supabase/setup-cli@v2
