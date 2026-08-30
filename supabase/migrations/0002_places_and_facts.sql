@@ -6,7 +6,7 @@ create table public.places (
   name text not null,
   category text,
   address text,
-  location geography(point,4326) not null,
+  location gis.geography(point,4326) not null,
   source_tags jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
