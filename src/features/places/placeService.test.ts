@@ -1,5 +1,5 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest'
-const rpc=vi.fn()
+const {rpc}=vi.hoisted(()=>({rpc:vi.fn()}))
 vi.mock('../../lib/supabase',()=>({supabase:{rpc}}))
 vi.mock('../needs/preferences',()=>({loadPreferences:()=>({preferLowNoise:false,avoidStrongLighting:false,crowdsAcceptable:true,needSeating:false,preferQuietArea:false,needStepFree:false})}))
 import {listNearbyPlaces} from './placeService'
