@@ -15,6 +15,7 @@ The RC will use:
 
 - Vercel for the public Vite/PWA frontend.
 - A dedicated Supabase project for PostgreSQL/PostGIS, Auth, Row Level Security, RPCs and Edge Functions.
+- Supabase `eu-north-1` (Stockholm) as the default project region for the first Norway-focused RC.
 - Supabase email magic-link authentication for contributors.
 - Immediate publication of valid contributions, with reporting, rate limits and moderator review after publication.
 - A public Vercel URL for the first release candidate; a custom domain can be attached later without changing the application architecture.
@@ -28,7 +29,7 @@ The first public candidate is `v0.1.0-rc1`.
 
 The frontend must visibly identify itself as an RC/staging build so testers understand that behavior and data models may still change before v1.0. This label must not imply that submitted contributions are disposable test data.
 
-The GitHub release/tag must point at a commit that has passed the complete release gate. The deployment must use the same reviewed source state or a later deployment-only commit that has independently passed the gate.
+The immutable Git tag `v0.1.0-rc1` must point to the exact source commit used by the successfully smoke-tested public Vercel deployment. If deployment configuration requires repository changes, those changes must be committed and pass the complete release gate before deployment. The tag is created only after the deployed candidate has passed smoke testing; it must not be moved later.
 
 ## Architecture
 
@@ -58,6 +59,8 @@ A dedicated Supabase project hosts:
 - rate limiting
 - live-report expiry logic
 - Edge Functions for place search/discovery provider access
+
+The default region is `eu-north-1` (Stockholm). A different region may be used only if the selected Supabase organization cannot provision there or there is a material cost/availability reason; any such change must remain within Europe and be surfaced before project creation.
 
 This project is initially called the RC/staging environment, but its community data is production-intent data. Database resets are therefore forbidden after public contribution collection begins except for an explicitly approved destructive recovery procedure.
 
@@ -140,12 +143,9 @@ Explicit user searches may use a Nominatim-compatible endpoint configured throug
 
 Public Overpass is not approved as a routine viewport-discovery backend for an open RC.
 
-For RC1, viewport/place discovery must be one of:
+For RC1, routine automatic viewport discovery must remain disabled or otherwise prevented from generating repeated public-Overpass traffic. Discovery may be enabled only when pointed at a capacity-appropriate hosted/self-hosted provider, or when an explicitly manual/low-frequency operation is verified to comply with the provider's policy.
 
-1. disabled or deliberately constrained to low-frequency/manual discovery behavior already supported by the app, or
-2. pointed at a capacity-appropriate hosted/self-hosted provider before public traffic is encouraged.
-
-The deployment must not silently fall back to aggressive public Overpass usage.
+The deployment must not silently fall back to aggressive public Overpass usage when no suitable discovery provider is configured.
 
 ### Attribution and provenance
 
@@ -168,7 +168,7 @@ Required server-only values:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `PLACE_SEARCH_PROVIDER_URL`
-- `PLACE_DISCOVERY_PROVIDER_URL` when discovery is enabled
+- `PLACE_DISCOVERY_PROVIDER_URL` only when discovery is enabled
 - `PLACE_PROVIDER_USER_AGENT`
 - `PLACE_DISCOVERY_MAX_AREA_KM2` as needed
 
@@ -178,22 +178,24 @@ Secrets are configured through provider secret/environment facilities only. They
 
 Implementation should follow this order:
 
-1. Confirm the final `main` commit is green in the complete release gate.
-2. Create and publish the `v0.1.0-rc1` GitHub tag/release from a green commit.
-3. Select the Supabase organization and confirm any project cost before creation.
-4. Create a dedicated SENSEMAP RC Supabase project in an appropriate European region.
-5. Apply the repository migrations in order without bypassing migration history.
-6. Load only intentional RC reference/seed data.
-7. Deploy the required Edge Functions.
-8. Configure Auth site URL and allowed redirect URL(s) for the eventual Vercel origin.
-9. Configure Edge Function/provider secrets.
-10. Run Supabase security and performance advisors and address release-blocking findings.
-11. Configure/deploy the Vercel project from the SENSEMAP source with public environment values only.
-12. Update Supabase Auth redirect configuration with the final public Vercel origin if it differs from the provisional value.
-13. Run deployed smoke tests.
-14. Announce/share the RC URL only after the deployed smoke tests pass.
+1. Confirm the current `main` commit is green in the complete release gate.
+2. Select the Supabase organization and confirm any project cost before creation.
+3. Create the dedicated SENSEMAP RC Supabase project in `eu-north-1` (Stockholm), unless an explicitly surfaced European-region exception is required.
+4. Apply the repository migrations in order without bypassing migration history.
+5. Load only intentional RC reference/seed data.
+6. Deploy the required Edge Functions.
+7. Configure Edge Function/provider secrets and keep routine automatic discovery disabled unless a capacity-appropriate provider is available.
+8. Configure a provisional Auth site/redirect origin suitable for initial Vercel deployment, then update it to the final public origin when known.
+9. Run Supabase security and performance advisors and address release-blocking findings.
+10. Configure the Vercel project and required public environment values.
+11. If Vercel deployment requires repository configuration changes, commit them and re-run the complete source release gate before continuing.
+12. Deploy the candidate from the exact green source commit and record that commit SHA with the deployment.
+13. Update Supabase Auth site/redirect configuration to the final public Vercel origin.
+14. Run the deployed smoke-test checklist.
+15. After smoke tests pass, create immutable tag `v0.1.0-rc1` on the exact deployed commit and publish the corresponding GitHub prerelease.
+16. Announce/share the RC URL.
 
-If Vercel deployment mechanics require a deployment-only repository configuration file, that change must go through the normal release gate before it becomes the announced RC deployment.
+This ordering prevents an RC tag from pointing at code that differs from the candidate actually verified in the public environment.
 
 ## Deployed smoke-test checklist
 
@@ -274,4 +276,5 @@ RC1 staging is successful when:
 - no privileged secret is exposed to the browser;
 - OSM usage stays within the explicitly approved provider boundaries;
 - all source release gates and deployed smoke tests pass;
+- `v0.1.0-rc1` points exactly at the smoke-tested deployed source commit;
 - legitimate RC contributions are preserved for future production use.
