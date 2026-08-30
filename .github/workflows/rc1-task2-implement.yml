@@ -1,0 +1,146 @@
+name: RC1 Task 2 implementation
+
+on:
+  push:
+    branches:
+      - feat/sensemap-rc1-staging
+    paths:
+      - .github/workflows/rc1-task2-implement.yml
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/sensemap-rc1-staging
+      - name: Implement RC identity banner
+        run: |
+          set -euo pipefail
+          mkdir -p src/config
+          cat > src/config/release.ts <<'EOF'
+          export interface ReleaseInfo {
+            channel: 'rc'
+            version: string
+          }
+
+          interface ReleaseEnv {
+            VITE_RELEASE_CHANNEL?: string
+            VITE_RELEASE_VERSION?: string
+          }
+
+          export function getReleaseInfo(env: ReleaseEnv = import.meta.env): ReleaseInfo | null {
+            if (env.VITE_RELEASE_CHANNEL !== 'rc') return null
+            const version = env.VITE_RELEASE_VERSION?.trim()
+            if (!version) return null
+            return { channel: 'rc', version }
+          }
+          EOF
+
+          cat > src/components/ReleaseBanner.tsx <<'EOF'
+          import { useTranslation } from 'react-i18next'
+          import type { ReleaseInfo } from '../config/release'
+
+          export function ReleaseBanner({ release }: { release: ReleaseInfo | null }) {
+            const { t } = useTranslation()
+            if (!release) return null
+            return (
+              <aside className="release-banner" role="status">
+                <strong>{t('release.rcLabel', { version: release.version })}</strong>
+                <span>{t('release.realDataNotice')}</span>
+              </aside>
+            )
+          }
+          EOF
+
+          cat > src/components/AppShell.tsx <<'EOF'
+          import type { ReactNode } from 'react'
+          import { useTranslation } from 'react-i18next'
+          import { getReleaseInfo } from '../config/release'
+          import { BottomNav } from './BottomNav'
+          import { LanguageSwitcher } from './LanguageSwitcher'
+          import { ReleaseBanner } from './ReleaseBanner'
+
+          export function AppShell({ children }: { children: ReactNode }) {
+            const { t } = useTranslation()
+            const release = getReleaseInfo()
+            return <div className="app-shell">
+              <header className="app-header">
+                <div><div className="app-name">{t('app.name')}</div><div className="app-tagline">{t('app.tagline')}</div></div>
+                <LanguageSwitcher />
+              </header>
+              <ReleaseBanner release={release} />
+              <div className="app-content">{children}</div>
+              <footer className="app-footer"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">{t('osm.attribution')}</a></footer>
+              <BottomNav />
+            </div>
+          }
+          EOF
+
+          cat > src/vite-env.d.ts <<'EOF'
+          /// <reference types="vite/client" />
+          /// <reference types="vite-plugin-pwa/react" />
+
+          interface ImportMetaEnv {
+            readonly VITE_SUPABASE_URL: string
+            readonly VITE_SUPABASE_PUBLISHABLE_KEY: string
+            readonly VITE_MAP_STYLE_URL: string
+            readonly VITE_RELEASE_CHANNEL?: 'rc'
+            readonly VITE_RELEASE_VERSION?: string
+          }
+
+          interface ImportMeta {
+            readonly env: ImportMetaEnv
+          }
+          EOF
+
+          printf '\nVITE_RELEASE_CHANNEL=\nVITE_RELEASE_VERSION=\n' >> .env.example
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          translations = {
+              'en': {
+                  'release.rcLabel': 'Release candidate · {{version}}',
+                  'release.realDataNotice': 'SENSEMAP is being tested. Contributions are real and may be retained for the public launch.',
+              },
+              'nn': {
+                  'release.rcLabel': 'Utgjevingskandidat · {{version}}',
+                  'release.realDataNotice': 'SENSEMAP er under testing. Bidrag er ekte og kan bli tekne vare på til den offentlege lanseringa.',
+              },
+          }
+          for lang, additions in translations.items():
+              path = Path(f'src/i18n/locales/{lang}/common.json')
+              data = json.loads(path.read_text(encoding='utf-8'))
+              merged = {}
+              for key, value in data.items():
+                  merged[key] = value
+                  if key == 'app.tagline':
+                      merged.update(additions)
+              path.write_text(json.dumps(merged, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          css_path = Path('src/styles/global.css')
+          css = css_path.read_text(encoding='utf-8')
+          old = '.app-shell{min-height:100vh;display:grid;grid-template-rows:auto 1fr auto auto}'
+          new = '.app-shell{min-height:100vh;display:grid;grid-template-rows:auto auto 1fr auto auto}'
+          if old not in css:
+              raise SystemExit('expected app-shell CSS signature not found')
+          css = css.replace(old, new, 1)
+          css += '\n.release-banner{display:flex;flex-wrap:wrap;align-items:baseline;gap:.35rem .75rem;padding:.55rem 1rem;background:#fff;border-bottom:2px solid currentColor;font-size:.9rem}.release-banner strong{white-space:nowrap}\n'
+          css_path.write_text(css, encoding='utf-8')
+          PY
+
+          rm .github/workflows/rc1-task2-implement.yml
+
+      - name: Commit Task 2
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: label public RC builds"
+          git push origin HEAD:feat/sensemap-rc1-staging
