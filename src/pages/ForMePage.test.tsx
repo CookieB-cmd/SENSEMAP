@@ -1,0 +1,4 @@
+import {describe,expect,it} from 'vitest'
+import {rankForMe,type RankedPlace} from './ForMePage'
+const row=(id:string,percent:number|null,distanceM:number):RankedPlace=>({id,name:id,category:null,address:null,latitude:0,longitude:0,distanceM,reportCount:1,personalFit:null,fit:{percent,kind:percent===null?'insufficient':percent>=85?'strong':'good',reasons:[],knownCriteria:percent===null?0:2,requestedCriteria:2}})
+describe('For Me ranking',()=>{it('sorts fit before distance and unknown data last',()=>{expect(rankForMe([row('near-unknown',null,10),row('far-strong',100,800),row('near-good',75,20)]).map(x=>x.id)).toEqual(['far-strong','near-good','near-unknown'])});it('uses distance only as tie-breaker',()=>{expect(rankForMe([row('far',90,500),row('near',90,50)]).map(x=>x.id)).toEqual(['near','far'])})})

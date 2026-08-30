@@ -1,0 +1,13 @@
+begin;
+select plan(3);
+insert into auth.users(id,email) values('00000000-0000-0000-0000-000000000097','moderator@example.invalid'),('00000000-0000-0000-0000-000000000096','ordinary@example.invalid') on conflict do nothing;
+insert into public.user_roles(user_id,role) values('00000000-0000-0000-0000-000000000097','moderator') on conflict do nothing;
+insert into public.moderation_items(id,entity_type,entity_id) values('10000000-0000-0000-0000-000000000001','comment','20000000-0000-0000-0000-000000000001') on conflict do nothing;
+set local role authenticated;
+set local "request.jwt.claim.sub"='00000000-0000-0000-0000-000000000096';
+select is(count(*),0::bigint,'non-moderator cannot read queue') from public.moderation_items;
+set local "request.jwt.claim.sub"='00000000-0000-0000-0000-000000000097';
+select is(count(*),1::bigint,'moderator can read queue') from public.moderation_items;
+select lives_ok($$update public.moderation_items set status='approved' where id='10000000-0000-0000-0000-000000000001'$$,'moderator can update queue');
+select * from finish();
+rollback;

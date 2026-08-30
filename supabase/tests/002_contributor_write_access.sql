@@ -1,0 +1,10 @@
+begin;
+select plan(3);
+insert into auth.users(id,email) values('00000000-0000-0000-0000-000000000099','contributor@example.invalid') on conflict do nothing;
+set local role authenticated;
+set local "request.jwt.claim.sub"='00000000-0000-0000-0000-000000000099';
+select lives_ok($$insert into public.sense_reports(place_id,user_id,noise,crowding,lighting) values('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000099','quiet','few','soft')$$,'authenticated user can insert own report');
+select throws_ok($$insert into public.sense_reports(place_id,user_id,noise,crowding,lighting) values('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000098','quiet','few','soft')$$,'42501',null,'authenticated user cannot forge owner');
+select throws_ok($$update public.sense_reports set noise='loud' where user_id='00000000-0000-0000-0000-000000000099'$$,'42501',null,'sensory reports are immutable');
+select * from finish();
+rollback;

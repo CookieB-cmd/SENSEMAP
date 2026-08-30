@@ -1,0 +1,3 @@
+import {beforeEach,describe,expect,it} from 'vitest'
+import {clearPreferences,defaultPreferences,loadPreferences,savePreferences} from './preferences'
+describe('local sensory preferences',()=>{beforeEach(()=>localStorage.clear());it('round-trips locally',()=>{savePreferences({...defaultPreferences,preferLowNoise:true,needSeating:true});expect(loadPreferences()).toMatchObject({preferLowNoise:true,needSeating:true})});it('falls back safely for malformed storage',()=>{localStorage.setItem('sensemap.preferences.v1','broken');expect(loadPreferences()).toEqual(defaultPreferences);clearPreferences()})})

@@ -1,0 +1,8 @@
+import type { CrowdLevel,NoiseLevel } from '../needs/types'
+import { ContributorAuthRequiredError,requireContributorSession } from '../auth/auth'
+import { supabase } from '../../lib/supabase'
+import { contributionSchema,type ContributionValues } from './contributionSchema'
+export { ContributorAuthRequiredError }
+const dbMap={quietArea:'quiet_area',toilet:'toilet',seating:'seating',stepFree:'step_free',entranceExitClear:'entrance_exit_clear',strongSmells:'strong_smells',flashingLights:'flashing_lights',crampedAreas:'cramped_areas',queueCommon:'queue_common'} as const
+export async function submitSenseReport(input:ContributionValues&{placeId:string}){const session=await requireContributorSession();const {placeId,...raw}=input;const v=contributionSchema.parse(raw);const row:Record<string,unknown>={place_id:placeId,user_id:session.user.id,noise:v.noise,crowding:v.crowding,lighting:v.lighting};for(const [k,db] of Object.entries(dbMap)){const val=v[k as keyof ContributionValues];if(typeof val==='boolean')row[db]=val}const {error}=await supabase.from('sense_reports').insert(row);if(error)throw error;if(v.comment){const c=await supabase.from('comments').insert({place_id:placeId,user_id:session.user.id,body:v.comment});if(c.error)throw c.error}}
+export async function submitLiveReport(input:{placeId:string;noise?:NoiseLevel;crowding?:CrowdLevel}){const session=await requireContributorSession();if(!input.noise&&!input.crowding)throw new Error('Live report needs an observation');const {error}=await supabase.from('live_reports').insert({place_id:input.placeId,user_id:session.user.id,noise:input.noise??null,crowding:input.crowding??null});if(error)throw error}

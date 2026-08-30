@@ -1,0 +1,3 @@
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
+export async function readCache(client:SupabaseClient,key:string):Promise<unknown|null>{const {data,error}=await client.from('external_query_cache').select('response_json,expires_at').eq('cache_key',key).maybeSingle();if(error)throw error;if(!data||new Date(data.expires_at).getTime()<=Date.now())return null;return data.response_json}
+export async function writeCache(client:SupabaseClient,key:string,provider:string,value:unknown,ttlSeconds:number){const expiresAt=new Date(Date.now()+ttlSeconds*1000).toISOString();const {error}=await client.from('external_query_cache').upsert({cache_key:key,provider,response_json:value,expires_at:expiresAt});if(error)throw error}

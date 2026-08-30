@@ -1,0 +1,3 @@
+import { z } from 'zod'
+export const contributionSchema=z.object({noise:z.enum(['quiet','moderate','loud']),crowding:z.enum(['few','some','busy']),lighting:z.enum(['soft','normal','strong']),quietArea:z.boolean().optional(),toilet:z.boolean().optional(),seating:z.boolean().optional(),stepFree:z.boolean().optional(),entranceExitClear:z.boolean().optional(),strongSmells:z.boolean().optional(),flashingLights:z.boolean().optional(),crampedAreas:z.boolean().optional(),queueCommon:z.boolean().optional(),comment:z.string().trim().min(1).max(500).optional()}).strict()
+export type ContributionValues=z.infer<typeof contributionSchema>
