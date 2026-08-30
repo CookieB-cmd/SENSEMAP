@@ -69,6 +69,14 @@ OpenStreetMap source objects and SENSEMAP community sensory data remain separate
 
 The service worker precaches the app shell/static assets. `runtimeCaching` is intentionally empty in v0.1. Supabase/API responses are not cached as authoritative offline place conditions. When offline, the UI explicitly warns that live place data may be unavailable or stale.
 
+## Public RC staging boundary
+
+Vercel serves the static PWA. `vercel.json` provides the SPA deep-link fallback so direct client routes are resolved by React Router through `index.html`.
+
+`.env.production` contains browser-public RC configuration only and is intentionally allowed in Git. Secrets and custom Edge Function server configuration remain outside Git and must be configured in the backend/hosting secret stores.
+
+Once public RC contributions begin, the hosted RC database must not be reset. Schema evolution must use forward migrations so real community submissions are not discarded.
+
 ## Running checks
 
 Unit/component tests:

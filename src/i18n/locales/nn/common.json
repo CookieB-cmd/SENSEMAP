@@ -1,6 +1,8 @@
 {
   "app.name": "SENSEMAP",
   "app.tagline": "Vit korleis staden er før du går",
+  "release.rcLabel": "Utgjevingskandidat · {{version}}",
+  "release.realDataNotice": "SENSEMAP er under testing. Bidrag er ekte og kan bli tekne vare på til den offentlege lanseringa.",
   "language.nn": "Nynorsk",
   "language.en": "English",
   "language.choose": "Vel språk",
