@@ -1,0 +1,78 @@
+name: SENSEMAP v0.1 release gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sensemap-release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+          cache: true
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.116.0
+          github-token: ${{ github.token }}
+
+      - name: Start local Supabase
+        run: supabase start
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run complete release gate
+        run: ./scripts/release-gate.sh
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload generated pnpm lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pnpm-lock
+          path: pnpm-lock.yaml
+          if-no-files-found: error
+          retention-days: 7
