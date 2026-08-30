@@ -1,7 +1,7 @@
 insert into public.places(id,source,source_type,source_id,name,category,address,location) values
-('00000000-0000-0000-0000-000000000001','osm','node','1001','Test Library','library','1 Testgata',st_setsrid(st_makepoint(5.857,61.452),4326)::geography),
-('00000000-0000-0000-0000-000000000002','osm','node','1002','Test Café','cafe','2 Testgata',st_setsrid(st_makepoint(5.860,61.453),4326)::geography),
-('00000000-0000-0000-0000-000000000003','osm','node','1003','Test Park','park','3 Testgata',st_setsrid(st_makepoint(5.855,61.451),4326)::geography)
+('00000000-0000-0000-0000-000000000001','osm','node','1001','Test Library','library','1 Testgata',gis.st_setsrid(gis.st_makepoint(5.857,61.452),4326)::gis.geography),
+('00000000-0000-0000-0000-000000000002','osm','node','1002','Test Café','cafe','2 Testgata',gis.st_setsrid(gis.st_makepoint(5.860,61.453),4326)::gis.geography),
+('00000000-0000-0000-0000-000000000003','osm','node','1003','Test Park','park','3 Testgata',gis.st_setsrid(gis.st_makepoint(5.855,61.451),4326)::gis.geography)
 on conflict do nothing;
 insert into public.place_facts(place_id,toilet,seating,quiet_area,step_free) values
 ('00000000-0000-0000-0000-000000000001',true,true,true,true),

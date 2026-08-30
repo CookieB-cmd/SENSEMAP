@@ -1,7 +1,7 @@
 create or replace function public.get_place_profile(p_place_id uuid) returns jsonb
-language sql stable security definer set search_path=public as $$
+language sql stable security definer set search_path=public,gis as $$
 with place_row as (
- select p.*, st_y(p.location::geometry) latitude, st_x(p.location::geometry) longitude from public.places p where p.id=p_place_id
+ select p.*, gis.st_y(p.location::gis.geometry) latitude, gis.st_x(p.location::gis.geometry) longitude from public.places p where p.id=p_place_id
 ), latest_sense as (
  select distinct on (user_id) * from public.sense_reports where place_id=p_place_id order by user_id,created_at desc
 ), latest_live as (

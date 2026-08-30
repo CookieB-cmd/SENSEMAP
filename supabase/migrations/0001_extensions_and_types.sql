@@ -1,4 +1,6 @@
-create extension if not exists postgis;
+create schema if not exists gis;
+revoke all on schema gis from public;
+create extension if not exists postgis with schema gis;
 create extension if not exists pgcrypto;
 create type public.noise_level as enum ('quiet','moderate','loud');
 create type public.lighting_level as enum ('soft','normal','strong');
