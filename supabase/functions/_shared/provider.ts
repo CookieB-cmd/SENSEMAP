@@ -17,4 +17,5 @@ export interface ProviderRequest{url:string;headers?:Record<string,string>;body?
 export interface ProviderClient{fetchJson<T>(request:ProviderRequest):Promise<T>}
 export class FetchProviderClient implements ProviderClient{async fetchJson<T>({url,headers,body,method='GET'}:ProviderRequest):Promise<T>{const response=await fetch(url,{method,headers,body});if(!response.ok)throw new Error(`Provider request failed: ${response.status}`);return await response.json() as T}}
 export function requireSecret(name:string):string{const value=Deno.env.get(name)?.trim();if(!value)throw new Error(`Missing Edge Function secret: ${name}`);return value}
+export function envOrDefault(name:string,fallback:string):string{const value=Deno.env.get(name)?.trim();return value||fallback}
 export async function sha256Hex(value:string):Promise<string>{const bytes=new TextEncoder().encode(value);const digest=await crypto.subtle.digest('SHA-256',bytes);return [...new Uint8Array(digest)].map(v=>v.toString(16).padStart(2,'0')).join('')}
