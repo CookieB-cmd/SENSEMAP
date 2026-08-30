@@ -1,6 +1,8 @@
 {
   "app.name": "SENSEMAP",
   "app.tagline": "Know the place before you go",
+  "release.rcLabel": "Release candidate · {{version}}",
+  "release.realDataNotice": "SENSEMAP is being tested. Contributions are real and may be retained for the public launch.",
   "language.nn": "Nynorsk",
   "language.en": "English",
   "language.choose": "Choose language",
