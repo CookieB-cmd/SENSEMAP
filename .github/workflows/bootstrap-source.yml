@@ -1,0 +1,43 @@
+name: Bootstrap SENSEMAP source
+
+on:
+  push:
+    branches:
+      - feat/sensemap-v0.1
+    paths:
+      - '.ci/bootstrap-ready'
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out bootstrap branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reassemble source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .ci/source.part.* > /tmp/sensemap-source.b64
+          base64 --decode /tmp/sensemap-source.b64 > /tmp/sensemap-source.tar.gz
+          tar -xzf /tmp/sensemap-source.tar.gz
+
+      - name: Replace bootstrap payload with source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .ci
+          # Workflow files are added separately by the GitHub connector because
+          # GITHUB_TOKEN cannot create/update them from inside an Actions run.
+          rm -f .github/workflows/release-gate.yml
+          git config user.name 'SENSEMAP CI Bootstrap'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: add SENSEMAP v0.1 source'
+          git push origin HEAD:feat/sensemap-v0.1

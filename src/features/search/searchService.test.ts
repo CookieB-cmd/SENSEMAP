@@ -1,0 +1,5 @@
+import {beforeEach,describe,expect,it,vi} from 'vitest'
+const {invoke}=vi.hoisted(()=>({invoke:vi.fn()}))
+vi.mock('../../lib/supabase',()=>({supabase:{functions:{invoke}}}))
+import {discoverPlaces,searchPlace} from './searchService'
+describe('SearchService',()=>{beforeEach(()=>invoke.mockReset());it('uses explicit submitted search through the Edge Function',async()=>{invoke.mockResolvedValue({data:{results:[{id:'p1',source:'osm',sourceType:'node',sourceId:'1',name:'Library',category:'library',address:null,lat:61.45,lng:5.86}]},error:null});const rows=await searchPlace('Library','en',{lat:61.45,lng:5.86});expect(invoke).toHaveBeenCalledWith('place-search',{body:{query:'Library',locale:'en',bias:{lat:61.45,lng:5.86}}});expect(rows[0].id).toBe('p1')});it('passes discovery viewport behind the server boundary',async()=>{invoke.mockResolvedValue({data:{results:[]},error:null});const bbox={south:61.4,west:5.8,north:61.5,east:5.9};await discoverPlaces(bbox);expect(invoke).toHaveBeenCalledWith('place-discovery',{body:{bbox}})})})

@@ -1,0 +1,7 @@
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { loadPreferences,savePreferences } from './preferences'
+import type { SensoryPreferences } from './types'
+const keys:Array<keyof SensoryPreferences>=['preferLowNoise','avoidStrongLighting','crowdsAcceptable','needSeating','preferQuietArea','needStepFree']
+const labels:Record<keyof SensoryPreferences,string>={preferLowNoise:'needs.preferLowNoise',avoidStrongLighting:'needs.avoidStrongLighting',crowdsAcceptable:'needs.crowdsAcceptable',needSeating:'needs.needSeating',preferQuietArea:'needs.preferQuietArea',needStepFree:'needs.needStepFree'}
+export function NeedsSheet({onSaved}:{onSaved?:(p:SensoryPreferences)=>void}={}){const {t}=useTranslation();const [p,setP]=useState(()=>loadPreferences());const [saved,setSaved]=useState(false);const set=(k:keyof SensoryPreferences,v:boolean)=>{setSaved(false);setP(c=>({...c,[k]:v}))};return <section className="needs-sheet" aria-labelledby="needs-sheet-title"><h1 id="needs-sheet-title">{t('needs.title')}</h1><p>{t('needs.intro')}</p><div className="needs-sheet__options">{keys.map(k=><label key={k} className="needs-option"><input type="checkbox" checked={p[k]} onChange={e=>set(k,e.currentTarget.checked)}/><span>{t(labels[k])}</span></label>)}</div><button type="button" className="primary-action" onClick={()=>{savePreferences(p);onSaved?.(p);setSaved(true)}}>{t('needs.save')}</button>{saved?<p role="status">{t('needs.saved')}</p>:null}</section>}

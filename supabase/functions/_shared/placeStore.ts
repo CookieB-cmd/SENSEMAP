@@ -1,0 +1,4 @@
+import type {SupabaseClient} from 'npm:@supabase/supabase-js@2'
+import type {ExternalPlace} from './provider.ts'
+export interface StoredExternalPlace extends ExternalPlace{id:string}
+export async function upsertPlaces(client:SupabaseClient,rows:ExternalPlace[]):Promise<StoredExternalPlace[]>{if(!rows.length)return[];const payload=rows.map(r=>({source_type:r.sourceType,source_id:r.sourceId,name:r.name,category:r.category,address:r.address,latitude:r.lat,longitude:r.lng,source_tags:r.sourceTags}));const {data,error}=await client.rpc('upsert_external_places',{p_rows:payload});if(error)throw error;const ids=new Map((data??[]).map((r:Record<string,unknown>)=>[`${r.source_type}:${r.source_id}`,String(r.id)]));return rows.flatMap(r=>{const id=ids.get(`${r.sourceType}:${r.sourceId}`);return id?[{...r,id}]:[]})}

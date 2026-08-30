@@ -1,0 +1,7 @@
+import { createClient } from '@supabase/supabase-js'
+import type { Page } from '@playwright/test'
+export const TEST_LIBRARY_ID='00000000-0000-0000-0000-000000000001'
+export function localSupabaseUrl(){return process.env.VITE_SUPABASE_URL ?? 'http://127.0.0.1:54321'}
+function requireServiceRoleKey(){const key=process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';if(!key)throw new Error('Contributor E2E requires SUPABASE_SERVICE_ROLE_KEY from `supabase status -o env`.');return key}
+export async function createDisposableContributor(page:Page,redirectPath:string):Promise<{signIn:()=>Promise<void>;cleanup:()=>Promise<void>}>{const admin=createClient(localSupabaseUrl(),requireServiceRoleKey(),{auth:{persistSession:false,autoRefreshToken:false}});const email=`sensemap-e2e-${Date.now()}-${Math.random().toString(36).slice(2)}@example.invalid`;const redirectTo=new URL(redirectPath,'http://127.0.0.1:4173').toString();const {data,error}=await admin.auth.admin.generateLink({type:'magiclink',email,options:{redirectTo}});if(error)throw error;return{signIn:async()=>{await page.goto(data.properties.action_link);await page.waitForURL(url=>url.origin==='http://127.0.0.1:4173'&&url.pathname===redirectPath);await page.waitForFunction(()=>Object.keys(localStorage).some(key=>key.startsWith('sb-')&&key.endsWith('-auth-token')))},cleanup:async()=>{if(data.user?.id)await admin.auth.admin.deleteUser(data.user.id)}}}
+export async function chooseEnglish(page:Page){await page.addInitScript(()=>localStorage.setItem('sensemap.language','en'))}

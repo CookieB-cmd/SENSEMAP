@@ -1,0 +1,15 @@
+begin;
+select plan(5);
+insert into auth.users(id,email) values('50000000-0000-0000-0000-000000000001','rate@example.invalid'),('50000000-0000-0000-0000-000000000002','mod@example.invalid') on conflict do nothing;
+insert into public.user_roles(user_id,role) values('50000000-0000-0000-0000-000000000002','moderator') on conflict do nothing;
+insert into public.comments(place_id,user_id,body) select '00000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000001','comment '||g from generate_series(1,10) g;
+select throws_ok($$insert into public.comments(place_id,user_id,body) values('00000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000001','too many')$$,'P0001',null,'comment rate limit is enforced');
+select is((select count(*) from public.moderation_items where entity_type='comment'),10::bigint,'comments are queued');
+insert into public.place_change_suggestions(id,place_id,user_id,payload) values('51000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000001','50000000-0000-0000-0000-000000000001','{"category":"toilet","present":true}');
+select is((select count(*) from public.moderation_items where entity_type='place_change_suggestion' and entity_id='51000000-0000-0000-0000-000000000001'),1::bigint,'change suggestions are queued');
+set local role authenticated;
+set local "request.jwt.claim.sub"='50000000-0000-0000-0000-000000000002';
+select lives_ok($$select public.resolve_moderation_item((select id from public.moderation_items where entity_id='51000000-0000-0000-0000-000000000001'),'approved')$$,'moderator can resolve item');
+select is((select status::text from public.place_change_suggestions where id='51000000-0000-0000-0000-000000000001'),'approved','resolution synchronizes entity status');
+select * from finish();
+rollback;
