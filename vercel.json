@@ -1,5 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "build": {
+    "env": {
+      "VITE_SUPABASE_URL": "https://hzrwzoyfpmgvmsdtqgkk.supabase.co",
+      "VITE_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_6K7jqGS13EwCImvJQq03Tw_XTa2B2gD",
+      "VITE_MAP_STYLE_URL": "https://tiles.openfreemap.org/styles/liberty"
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",
