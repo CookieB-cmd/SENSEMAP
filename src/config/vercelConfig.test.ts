@@ -1,10 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('Vercel RC deployment configuration', () => {
   it('defines SPA routing and the public Vite build environment', () => {
-    const configPath=fileURLToPath(new URL('../../vercel.json',import.meta.url))
+    const configPath=resolve(process.cwd(),'vercel.json')
     const exists=existsSync(configPath)
     expect(exists).toBe(true)
     if(!exists)return
