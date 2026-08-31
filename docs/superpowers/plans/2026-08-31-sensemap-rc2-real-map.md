@@ -44,7 +44,7 @@
 - `supabase/functions/_shared/osmNormalize.ts` — conservative visitable-destination allowlist/filter.
 - `supabase/functions/_shared/osmNormalize.test.ts` — destination filtering regression tests.
 - `supabase/functions/place-discovery/index.ts` — keep bounded provider query/caching; make filtering explicit and testable via shared normalisation.
-- `supabase/functions/place-discovery/index.test.ts` if present; otherwise create it — request validation/provider-failure/cache contract tests at function boundary where practical.
+- `supabase/functions/place-discovery/index.test.ts` — create boundary tests for invalid/oversized viewports and provider failure if no such function-level test exists already.
 - `src/features/search/searchService.ts` — keep `discoverPlaces()` as transport API; type failure consistently.
 - `src/features/map/SenseMap.tsx` — emit full visible bounds after settled map movement and expose marker selection without direct navigation.
 - `src/pages/MapPage.tsx` — wire nearby places + discovery + selection + preview + status strip.
@@ -57,11 +57,11 @@
 - `src/styles/global.css` — RC2 mobile layout, bottom sheet, marker hierarchy, safe areas, compact controls.
 - `src/i18n/locales/nn/common.json` — RC2 Nynorsk copy.
 - `src/i18n/locales/en/common.json` — matching English copy.
-- `src/i18n/index.ts` or existing parity test location — preserve/add translation parity coverage.
+- `src/i18n/locales.test.ts` — translation-key parity and required RC2 string coverage.
 - `vite.config.ts` — PWA manifest primary language consistency.
-- `tests/*.spec.ts` — extend mobile E2E journey for hybrid discovery/preview/first-report transition.
+- `tests/rc2-map.spec.ts` — mobile E2E journey for hybrid discovery/preview/first-report transition.
 - `scripts/release-gate.sh` — RC2-labelled gate plus generated-client secret scan.
-- `.github/workflows/release-gate.yml` — only if necessary to provide Deno/Edge-function test env; otherwise keep unchanged.
+- `.github/workflows/release-gate.yml` — modify only if the new function-level Deno test requires explicit test environment configuration.
 
 ---
 
@@ -77,7 +77,7 @@
 
 - [ ] **Step 1: Write failing tests for supported destinations**
 
-Add table-driven cases covering at least `amenity=cafe`, `amenity=restaurant`, `shop=supermarket`, `tourism=museum`, `leisure=fitness_centre`, and a named public-service amenity. Assert each normalises to a non-null place with the expected category.
+Add table-driven cases covering at least `amenity=cafe`, `amenity=restaurant`, `shop=supermarket`, `tourism=museum`, `leisure=fitness_centre`, and `amenity=library`. Assert each normalises to a non-null place with the expected category.
 
 ```ts
 it.each([
@@ -86,6 +86,7 @@ it.each([
   ['shop', 'supermarket'],
   ['tourism', 'museum'],
   ['leisure', 'fitness_centre'],
+  ['amenity', 'library'],
 ])('keeps visitable %s=%s destinations', (key, value) => {
   expect(normalizeOsmElement(osmElement({ name: 'Test place', [key]: value }))).not.toBeNull()
 })
@@ -99,11 +100,9 @@ Cover `boundary=administrative`, `natural=water`, `waterway=river`, `highway=res
 
 Run: `deno test supabase/functions/_shared/osmNormalize.test.ts`
 
-Expected: new rejection tests fail because current normalisation accepts any named OSM element containing a category-key value and does not enforce the RC2 destination policy.
+Expected: new rejection tests fail because current normalisation does not enforce the RC2 destination allowlist.
 
 - [ ] **Step 4: Implement the minimal allowlist policy**
-
-Use small sets grouped by OSM key; keep the policy explicit and reviewable.
 
 ```ts
 const supported: Record<'amenity'|'shop'|'tourism'|'leisure', ReadonlySet<string>> = {
@@ -142,7 +141,7 @@ git commit -m "feat: filter discovery to visitable places"
 **Files:**
 - Create: `src/features/map/discoveryViewport.ts`
 - Create: `src/features/map/discoveryViewport.test.ts`
-- Modify: `src/features/search/types.ts` only if the existing `DiscoveryBounds` type needs to be exported/reused.
+- Modify: `src/features/search/types.ts` only if `DiscoveryBounds` is not already exported in a reusable form.
 
 **Interfaces:**
 - Consumes: visible south/west/north/east bounds from MapLibre.
@@ -189,10 +188,10 @@ git commit -m "feat: define discovery viewport contract"
 **Files:**
 - Create: `src/features/map/usePlaceDiscovery.ts`
 - Create: `src/features/map/usePlaceDiscovery.test.tsx`
-- Modify: `src/features/search/searchService.ts` only for a small exported error-safe transport shape if required.
+- Modify: `src/features/search/searchService.ts`
 
 **Interfaces:**
-- Consumes: `DiscoveryBounds | null`, `discoverPlaces(bounds)`, debounce delay.
+- Consumes: `DiscoveryBounds | null`, existing `discoverPlaces(bounds)`, debounce delay.
 - Produces:
 
 ```ts
@@ -201,14 +200,14 @@ interface PlaceDiscoveryState {
   error: Error | null
   refreshToken: number
 }
-export function usePlaceDiscovery(bounds: DiscoveryBounds | null, delayMs?: number): PlaceDiscoveryState
+export function usePlaceDiscovery(bounds: DiscoveryBounds | null, delayMs = 450): PlaceDiscoveryState
 ```
 
 `refreshToken` increments only after a successful discovery so `MapPage` can re-run `useNearbyPlaces` without storing duplicate place data in two client states.
 
 - [ ] **Step 1: Write failing hook tests with fake timers and mocked `discoverPlaces`**
 
-Verify: no call before debounce; one call after settled bounds; same rounded key is suppressed; a meaningfully new viewport triggers a new call; failure sets `error` but leaves previous `refreshToken` unchanged; later success clears error and increments token.
+Verify: no call before 450 ms; one call after settled bounds; same rounded key is suppressed; a meaningfully new viewport triggers a new call; failure sets `error` but leaves previous `refreshToken` unchanged; later success clears error and increments token.
 
 - [ ] **Step 2: Run hook tests and confirm RED**
 
@@ -216,7 +215,7 @@ Run: `pnpm vitest run src/features/map/usePlaceDiscovery.test.tsx`
 
 - [ ] **Step 3: Implement minimal hook**
 
-Use a `useRef<Set<string>>` for session-level successful/attempted keys, a timer cleanup in `useEffect`, and cancellation guards. Do not clear any nearby-place state from this hook.
+Use `useRef<Set<string>>` for completed request keys, timer cleanup in `useEffect`, and a cancellation guard. Mark a key completed after success; on failure allow a later meaningful revisit/retry rather than permanently poisoning the key. Do not clear any nearby-place state from this hook.
 
 - [ ] **Step 4: Run hook tests and confirm GREEN**
 
@@ -235,7 +234,7 @@ git commit -m "feat: add debounced place discovery"
 
 **Files:**
 - Modify: `src/features/map/SenseMap.tsx`
-- Create or modify: `src/features/map/SenseMap.test.tsx`
+- Create: `src/features/map/SenseMap.test.tsx`
 
 **Interfaces:**
 - Consumes: `places: PlaceSummary[]`.
@@ -248,7 +247,7 @@ onPlaceSelected?: (place: PlaceSummary) => void
 
 - [ ] **Step 1: Write failing component tests around a mocked MapLibre Map**
 
-Assert `moveend` reads both `getCenter()` and `getBounds()` and emits them once. Assert clicking a generated marker emits the complete `PlaceSummary`, not only the id. Keep the existing explicit geolocation test: `navigator.geolocation.getCurrentPosition` must not run at initial render.
+Assert `moveend` reads both `getCenter()` and `getBounds()` and emits them once. Assert clicking a generated marker emits the complete `PlaceSummary`, not only the id. Assert `navigator.geolocation.getCurrentPosition` is not called on initial render.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -276,7 +275,8 @@ git commit -m "feat: expose map viewport and selected place"
 **Files:**
 - Modify: `src/pages/MapPage.tsx`
 - Modify: `src/features/map/useNearbyPlaces.ts`
-- Create or modify: `src/pages/MapPage.test.tsx`
+- Create: `src/pages/MapPage.test.tsx`
+- Create: `src/features/map/useNearbyPlaces.test.tsx`
 
 **Interfaces:**
 - Consumes: `usePlaceDiscovery(bounds)` from Task 3 and callbacks from Task 4.
@@ -292,25 +292,29 @@ Run: `pnpm vitest run src/pages/MapPage.test.tsx`
 
 - [ ] **Step 3: Add a refresh input to `useNearbyPlaces`**
 
-Prefer a small `refreshToken?: number` option/dependency rather than rebuilding the hook API.
+Extend the existing options shape without changing existing callers:
 
 ```ts
-useNearbyPlaces(input, { refreshToken })
+options: { includeProfiles?: boolean; refreshToken?: number } = {}
 ```
 
-Include the token in the effect dependency list; preserve current failure semantics.
+Include `options.refreshToken ?? 0` in the effect dependency list; preserve current failure semantics.
 
-- [ ] **Step 4: Wire viewport bounds and discovery state in MapPage**
+- [ ] **Step 4: Write and pass the hook refetch test**
 
-Maintain `center`, `bounds`, `selectedPlace`, filters. Pass bounds into `usePlaceDiscovery`; pass `refreshToken` into `useNearbyPlaces`. Keep discovery error distinct from primary nearby-query error.
+Render with `refreshToken=0`, resolve one request, rerender with `refreshToken=1`, and assert `listNearbyPlaces` is called again while the same geographic input is retained.
 
-- [ ] **Step 5: Run tests and confirm GREEN**
+Run: `pnpm vitest run src/features/map/useNearbyPlaces.test.tsx`
+
+- [ ] **Step 5: Wire viewport bounds and discovery state in MapPage**
+
+Maintain `center`, `bounds`, `selectedPlace`, and filters. Pass bounds into `usePlaceDiscovery`; pass `refreshToken` into `useNearbyPlaces`. Keep discovery error distinct from primary nearby-query error.
+
+- [ ] **Step 6: Run tests and confirm GREEN**
 
 Run: `pnpm vitest run src/pages/MapPage.test.tsx src/features/map/useNearbyPlaces.test.tsx`
 
-If `useNearbyPlaces.test.tsx` does not yet exist, add a focused test for refresh-token refetch as part of this task.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/pages/MapPage.tsx src/pages/MapPage.test.tsx src/features/map/useNearbyPlaces.ts src/features/map/useNearbyPlaces.test.tsx
@@ -330,8 +334,8 @@ git commit -m "feat: populate map from background discovery"
 - Modify: `src/features/places/PlaceSummaryCard.tsx`
 
 **Interfaces:**
-- `PlacePreview` consumes `place: PlaceSummary`, `onOpen(id)`, `onContribute(id)` and optional `onClose()`.
-- `MapStatusStrip` consumes `places: PlaceSummary[]` and discovery state.
+- `PlacePreview` consumes `place: PlaceSummary`, `onOpen(id: string)`, `onContribute(id: string)`, `onClose()`.
+- `MapStatusStrip` consumes `places: PlaceSummary[]`, `discovering: boolean`, and `discoveryError: Error | null`.
 
 - [ ] **Step 1: Write failing zero-report preview test**
 
@@ -343,7 +347,7 @@ Assert report count and personal-fit badge are shown only where available; no sa
 
 - [ ] **Step 3: Write failing status-strip tests**
 
-For 12 places with 3 reported, require counts equivalent to `12 stadar i området · 3 med SENSEMAP-data · 9 utan rapportar`. Test zero places and discovery-in-progress variants.
+For 12 places with 3 reported, require counts equivalent to `12 stadar i området · 3 med SENSEMAP-data · 9 utan rapportar`. Test zero places, discovery-in-progress, and discovery-error-with-existing-places variants.
 
 - [ ] **Step 4: Run and confirm RED**
 
@@ -351,11 +355,11 @@ Run: `pnpm vitest run src/features/places/PlacePreview.test.tsx src/features/map
 
 - [ ] **Step 5: Implement preview and strip, wire MapPage selection**
 
-Marker click sets `selectedPlace`; it must not navigate immediately. `Sjå stad`/`View place` navigates to `/places/:id`. First-contribution action may navigate/open the existing contribution mechanism using the smallest integration consistent with current routing; do not create a second contribution form.
+Marker click sets `selectedPlace`; it must not navigate immediately. `Sjå stad`/`View place` navigates to `/places/:id`. `Korleis er det her?`/`What is it like here?` navigates to `/places/:id?contribute=1` so Task 7 can open the existing contribution sheet rather than creating a duplicate form.
 
 - [ ] **Step 6: Make list cards honest for zero-report places**
 
-`PlaceSummaryCard` should explicitly show the zero-report status instead of simply omitting report metadata.
+`PlaceSummaryCard` explicitly shows the zero-report status instead of simply omitting report metadata.
 
 - [ ] **Step 7: Run and confirm GREEN**
 
@@ -374,33 +378,34 @@ git commit -m "feat: add map-centric place previews"
 
 **Files:**
 - Modify: `src/features/places/PlaceProfile.tsx`
-- Modify or create: `src/features/places/PlaceProfile.test.tsx`
+- Create: `src/features/places/PlaceProfile.test.tsx`
 - Modify: `src/pages/PlacePage.tsx`
-- Modify or create: `src/pages/PlacePage.test.tsx`
+- Create: `src/pages/PlacePage.test.tsx`
 
 **Interfaces:**
 - Consumes existing `PlaceProfileData` and `ContributionSheet` refresh callback.
-- Produces an explicit unreported state where `typical.reportCount === 0`; after contribution, refreshes `getPlaceProfile` and displays reported state.
+- Reads `?contribute=1` via React Router search params and opens the existing contribution sheet once the profile is available.
+- Produces explicit unreported state where `typical.reportCount === 0`; after contribution, refreshes `getPlaceProfile` and displays reported state.
 
 - [ ] **Step 1: Write failing profile test for zero reports**
 
 Use `typical.reportCount: 0` and null facts. Assert the primary section states that SENSEMAP has no reports rather than presenting `No` for null facts. Null means `not reported`; boolean `false` means a user-reported negative fact.
 
-- [ ] **Step 2: Write failing first-report refresh test**
+- [ ] **Step 2: Write failing first-report refresh and query-open tests**
 
-Mock `getPlaceProfile` to return zero-report data first and one-report data after `onSubmitted`. Assert the page transitions without reload.
+Mock `getPlaceProfile` to return zero-report data first and one-report data after `onSubmitted`. Render `/places/<id>?contribute=1`; assert the contribution sheet opens after profile load, submission closes/refreshes it, and the page transitions without reload.
 
 - [ ] **Step 3: Run and confirm RED**
 
 Run: `pnpm vitest run src/features/places/PlaceProfile.test.tsx src/pages/PlacePage.test.tsx`
 
-- [ ] **Step 4: Implement the minimal hierarchy change**
+- [ ] **Step 4: Implement the minimal hierarchy/query change**
 
-Add a zero-report explanatory block. Keep the existing primary attributes for reported profiles; retain current/typical separation and `ConfidenceBadge` when evidence exists.
+Add a zero-report explanatory block. Keep the existing primary attributes for reported profiles; retain current/typical separation and `ConfidenceBadge` when evidence exists. Read `contribute=1` with `useSearchParams`; after opening, remove or replace the query flag so browser back/refresh does not repeatedly force the sheet open.
 
 - [ ] **Step 5: Add recoverable profile error navigation**
 
-On profile failure render a translated error plus a `Back to map`/`Tilbake til kartet` link; do not leave the user on a dead-end paragraph.
+On profile failure render a translated error plus a `Back to map`/`Tilbake til kartet` link.
 
 - [ ] **Step 6: Run and confirm GREEN**
 
@@ -423,7 +428,9 @@ git commit -m "feat: distinguish unreported place data"
 - Modify: `src/features/search/SearchBox.tsx`
 - Modify: `src/styles/global.css`
 - Modify: `vite.config.ts`
-- Modify or create tests: `src/components/BottomNav.test.tsx`, `src/features/search/SearchBox.test.tsx`, `src/config/vercelConfig.test.ts` if suitable for PWA config assertions.
+- Create: `src/components/BottomNav.test.tsx`
+- Modify or create: `src/features/search/SearchBox.test.tsx`
+- Modify: `src/config/vercelConfig.test.ts` or create `src/config/pwaConfig.test.ts` if keeping PWA assertions separate is clearer.
 
 **Interfaces:**
 - No data-model changes.
@@ -435,19 +442,21 @@ Require accessible icon+text links for all three nav items and verify no duplica
 
 - [ ] **Step 2: Write failing search/mobile tests**
 
-Assert the search control remains one labelled search form, active parsed needs are visible as chips, and result markup is suitable for overlay positioning without changing search semantics.
+Assert the search control remains one labelled search form, active parsed needs are visible as chips, and result markup has a stable class/region for overlay positioning without changing search semantics.
 
 - [ ] **Step 3: Write failing PWA language assertion**
 
-Read `vite.config.ts` in a config test or factor the manifest into an exported config constant. Require the primary manifest `lang` to be `nn` to match the default launch language while runtime UI remains switchable.
+Factor the manifest object into an exported `pwaManifest` constant in `vite.config.ts` or `src/config/pwaManifest.ts`; assert `lang === 'nn'` and the existing name/start/display/icon fields remain valid.
 
 - [ ] **Step 4: Run and confirm RED**
 
-Run: `pnpm vitest run src/components/BottomNav.test.tsx src/features/search/SearchBox.test.tsx src/config/vercelConfig.test.ts`
+Run: `pnpm vitest run src/components/BottomNav.test.tsx src/features/search/SearchBox.test.tsx src/config/vercelConfig.test.ts src/config/pwaConfig.test.ts`
+
+Run only the config test file that exists after choosing the factoring approach.
 
 - [ ] **Step 5: Implement mobile polish**
 
-In CSS: make the map dominant but shorter than RC1 on phone; style `PlacePreview` as a bottom sheet and side panel at desktop breakpoint; make geolocation a compact map control; add `padding-bottom: max(..., env(safe-area-inset-bottom))` to bottom nav; ensure touch targets are at least roughly 44 CSS px; remove redundant footer spacing; keep focus-visible outlines.
+In CSS: make the map dominant but shorter than RC1 on phone; style `PlacePreview` as a bottom sheet and side panel at desktop breakpoint; make geolocation a compact map control; add `padding-bottom: max(.6rem, env(safe-area-inset-bottom))` to bottom nav; keep tap targets at least 44 CSS px tall/wide where interactive; remove redundant footer spacing; keep focus-visible outlines.
 
 Do not hard-code Android-only dimensions and do not remove legally required map attribution.
 
@@ -461,14 +470,16 @@ pnpm typecheck
 pnpm build
 ```
 
-Expected: all pass.
+If PWA assertions live in a separate `pwaConfig.test.ts`, include it in the Vitest command.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/components/BottomNav.tsx src/components/AppShell.tsx src/features/search/SearchBox.tsx src/styles/global.css vite.config.ts src/components/BottomNav.test.tsx src/features/search/SearchBox.test.tsx src/config/vercelConfig.test.ts
+git add src/components/BottomNav.tsx src/components/AppShell.tsx src/features/search/SearchBox.tsx src/styles/global.css vite.config.ts src/components/BottomNav.test.tsx src/features/search/SearchBox.test.tsx src/config/vercelConfig.test.ts src/config/pwaConfig.test.ts
 git commit -m "feat: polish RC2 mobile map shell"
 ```
+
+Add only files that exist/change.
 
 ---
 
@@ -477,12 +488,12 @@ git commit -m "feat: polish RC2 mobile map shell"
 **Files:**
 - Modify: `src/i18n/locales/nn/common.json`
 - Modify: `src/i18n/locales/en/common.json`
-- Modify the existing locale-parity test discovered in the repo; if none exists, create `src/i18n/locales.test.ts`.
+- Create: `src/i18n/locales.test.ts`
 
 **Interfaces:**
 - New keys used by Tasks 5–8 must exist in both locales with identical key structure.
 
-- [ ] **Step 1: Write/fail parity test before adding copy**
+- [ ] **Step 1: Write failing parity test before adding copy**
 
 Recursively flatten both JSON objects and assert identical key sets.
 
@@ -490,7 +501,7 @@ Recursively flatten both JSON objects and assert identical key sets.
 expect([...flattenKeys(nn)].sort()).toEqual([...flattenKeys(en)].sort())
 ```
 
-Also assert the semantic strings needed by RC2 exist, including map discovery failure/status, zero-report status, place counts, preview actions, back-to-map, and reported/unreported distinctions.
+Also assert semantic keys used by RC2 exist for discovery failure/status, zero-report status, place counts, preview actions, back-to-map, and reported/unreported distinctions.
 
 - [ ] **Step 2: Run and confirm RED**
 
@@ -498,7 +509,7 @@ Run: `pnpm vitest run src/i18n/locales.test.ts`
 
 - [ ] **Step 3: Add both language sets together**
 
-Use natural Nynorsk first-class wording, not literal machine-like translation. Required core terms include:
+Required core wording:
 
 ```text
 nn: Ingen SENSEMAP-data enno
@@ -534,36 +545,40 @@ git commit -m "feat: localize RC2 map experience"
 ### Task 10: RC2 Mobile End-to-End Journey
 
 **Files:**
-- Modify existing relevant file(s) under `tests/` or create `tests/rc2-map.spec.ts`.
-- Modify `playwright.config.ts` only if a dedicated mobile project is cleaner than per-test viewport.
+- Create: `tests/rc2-map.spec.ts`
+- Modify: `playwright.config.ts` only if a dedicated mobile project is cleaner than per-test viewport.
 
 **Interfaces:**
 - Exercises public app behaviour against local Supabase seeded/test-controlled data.
 
 - [ ] **Step 1: Write the failing narrow-viewport E2E scenario**
 
-Set a realistic phone viewport such as `390x844`. Cover: map opens; discovery response populates a zero-report destination; marker opens preview without URL change; preview says no data; `View place` opens `/places/<id>`; first contribution is submitted or inserted through the established test helper; refreshed profile becomes reported; direct `page.goto('/places/<id>')` works; switching `NN`/`EN` changes new RC2 copy.
+Set viewport `390x844`. Cover: map opens; discovery response populates a zero-report destination; marker opens preview without URL change; preview says no data; `View place` opens `/places/<id>`; first contribution is submitted through the established local test helper/data path; refreshed profile becomes reported; direct `page.goto('/places/<id>')` works; switching `NN`/`EN` changes RC2 copy.
 
 - [ ] **Step 2: Add discovery-failure degradation E2E**
 
-Intercept or otherwise force `place-discovery` failure after a known place is loaded. Assert the known place remains visible and the non-destructive discovery message appears.
+Intercept or force `place-discovery` failure after a known place is loaded. Assert the known place remains visible and the non-destructive discovery message appears.
 
-- [ ] **Step 3: Run just RC2 E2E and confirm RED, then fix test integration gaps minimally**
-
-Run: `pnpm exec playwright test tests/rc2-map.spec.ts`
-
-Do not weaken assertions to make tests green. Fix only product/test-fixture gaps exposed by the agreed design.
-
-- [ ] **Step 4: Re-run RC2 E2E and confirm GREEN**
+- [ ] **Step 3: Run RC2 E2E and confirm RED**
 
 Run: `pnpm exec playwright test tests/rc2-map.spec.ts`
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Fix only integration gaps exposed by the agreed journey**
+
+Do not weaken assertions. If the test needs deterministic data, use the existing local Supabase service-role test setup already provided by the release gate rather than adding production-only bypasses.
+
+- [ ] **Step 5: Re-run RC2 E2E and confirm GREEN**
+
+Run: `pnpm exec playwright test tests/rc2-map.spec.ts`
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add tests/rc2-map.spec.ts playwright.config.ts
 git commit -m "test: cover RC2 mobile map journey"
 ```
+
+Add `playwright.config.ts` only if changed.
 
 ---
 
@@ -571,30 +586,29 @@ git commit -m "test: cover RC2 mobile map journey"
 
 **Files:**
 - Modify: `scripts/release-gate.sh`
-- Modify: `.github/workflows/release-gate.yml` only if required by the local Edge Function test harness.
-- Create: `src/config/clientBundleSecrets.test.ts` only if a Vitest-based source/config assertion materially improves coverage; the definitive generated-assets scan stays in the shell gate.
+- Modify: `.github/workflows/release-gate.yml` only if Task 10/Edge-function tests require explicit CI environment wiring.
 
 **Interfaces:**
 - Produces one command, `bash scripts/release-gate.sh`, that proves DB + Deno + unit + typecheck + production build + secret scan + E2E.
 
-- [ ] **Step 1: Add a failing/generated-assets secret-scan step**
-
-After `pnpm build`, scan `dist` for forbidden server-side identifiers/value prefixes. The scan must look for actual configured secret values when they are available to CI/local gate, plus forbidden variable names such as `SUPABASE_SERVICE_ROLE_KEY`, `PLACE_PROVIDER_USER_AGENT` secret material, and server provider credentials. Do not flag the public Supabase URL/publishable key/map style.
-
-Example shape:
+- [ ] **Step 1: Add generated-assets secret scan after `pnpm build`**
 
 ```bash
 if grep -R -E 'SUPABASE_SERVICE_ROLE_KEY|PLACE_DISCOVERY_PROVIDER_URL|sb_secret_' dist; then
   echo 'ERROR: privileged server configuration found in client bundle' >&2
   exit 1
 fi
+if [[ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ]] && grep -RF -- "$SUPABASE_SERVICE_ROLE_KEY" dist; then
+  echo 'ERROR: service-role value found in client bundle' >&2
+  exit 1
+fi
 ```
 
-If a real service-role value is present in the environment, additionally `grep -RF -- "$SUPABASE_SERVICE_ROLE_KEY" dist` and fail on a match.
+Do not flag the public Supabase URL, publishable key, or map-style URL.
 
-- [ ] **Step 2: Update gate label to RC2 and ensure new tests are naturally included**
+- [ ] **Step 2: Update the gate label to RC2**
 
-Keep current ordering: reset DB → DB tests → Deno shared/function tests → Vitest → typecheck → build → secret scan → Playwright.
+Keep ordering: reset DB → DB tests → Deno tests → Vitest → typecheck → build → secret scan → Playwright.
 
 - [ ] **Step 3: Run complete gate locally and capture fresh evidence**
 
@@ -605,11 +619,11 @@ Expected: every phase passes; final line states `SENSEMAP RC2 release gate passe
 - [ ] **Step 4: Commit**
 
 ```bash
-git add scripts/release-gate.sh .github/workflows/release-gate.yml src/config/clientBundleSecrets.test.ts
+git add scripts/release-gate.sh .github/workflows/release-gate.yml
 git commit -m "test: harden RC2 release gate"
 ```
 
-Only add files from that command that actually changed/are created.
+Add the workflow only if changed.
 
 ---
 
@@ -620,7 +634,7 @@ Only add files from that command that actually changed/are created.
 - Deployment targets: Supabase `hzrwzoyfpmgvmsdtqgkk`; Vercel SENSEMAP RC project.
 
 **Interfaces:**
-- Supabase Edge Function `place-discovery` must be reachable by the public Vite client using the publishable client context while privileged provider/upsert operations remain server-side inside the function.
+- Supabase Edge Function `place-discovery` must be reachable by the public Vite client while privileged provider/upsert operations remain server-side inside the function.
 
 - [ ] **Step 1: Verify the implementation branch is fully green before deployment**
 
@@ -630,35 +644,35 @@ Expected: fresh full GREEN on the exact commit to deploy.
 
 - [ ] **Step 2: Review Edge Function authentication contract before deployment**
 
-Confirm whether the existing `place-search`/public RC convention intentionally uses `verify_jwt=false` with its own bounded public endpoint controls, or whether `place-discovery` can use normal Supabase client JWT verification. Preserve the established public-RC threat model; do not casually expose service-role access. Document the chosen setting in the deployment note/PR.
+Compare the established public `place-search` deployment and RC threat model with `place-discovery`. If discovery is intentionally public, keep `verify_jwt=false` only with its existing bounded viewport/cache/provider controls; otherwise use normal client JWT verification. Record the chosen mode in the PR without exposing secrets.
 
 - [ ] **Step 3: Configure only server-side discovery environment on Supabase**
 
-Ensure the function has `PLACE_DISCOVERY_PROVIDER_URL`, `PLACE_PROVIDER_USER_AGENT`, `SUPABASE_URL`, and service-role access through Supabase-managed server environment. Never place these secrets in `vercel.json`, Vite env, source literals, screenshots, PR text, or logs.
+Ensure the function has `PLACE_DISCOVERY_PROVIDER_URL`, `PLACE_PROVIDER_USER_AGENT`, `SUPABASE_URL`, and service-role access through Supabase-managed server environment. Never place these secret values in Vercel/Vite client env, source literals, screenshots, PR text, or copied logs.
 
 - [ ] **Step 4: Deploy `place-discovery` from the exact reviewed source**
 
-Deploy the entrypoint plus `_shared` relative dependencies required by imports. Verify function status becomes ACTIVE.
+Deploy `supabase/functions/place-discovery/index.ts` plus all imported `_shared` files. Verify function status becomes ACTIVE.
 
 - [ ] **Step 5: Smoke the function with a bounded Førde viewport**
 
-Invoke a small bbox around Førde sentrum. Expected: HTTP success; results include real visitable destinations; no administrative regions/rivers/road geometry; upserted rows become visible through `nearby_places`.
+Use a small bbox around Førde sentrum. Expected: success; results include real visitable destinations; no administrative regions/rivers/road geometry; returned/upserted rows become visible through `nearby_places`.
 
 - [ ] **Step 6: Deploy the exact green frontend commit to Vercel RC2**
 
-Use the existing public Vite values only: intended Supabase URL, publishable key, OpenFreeMap style URL. Verify deployment state `READY` and SPA rewrite still serves `index.html` for `/places/<id>`.
+Use only the intended public Vite values: Supabase URL, publishable key, OpenFreeMap style URL. Verify deployment `READY` and direct `/places/<id>` serves the SPA correctly.
 
 - [ ] **Step 7: Perform the live Førde mobile smoke test**
 
-On a phone-sized viewport verify all ten items from spec section 14: public URL loads; real Førde destinations appear; OSM-only/reported markers differ; multiple marker previews work; normal/direct place profile loading works; zero-report wording is honest; first contribution changes the state; map/search work without geolocation permission; and relevant Supabase/Vercel logs show no visible production error.
+Verify all ten items from spec section 14: public URL loads; real Førde destinations appear; OSM-only/reported markers differ; multiple marker previews work; normal/direct place profile loading works; zero-report wording is honest; first contribution changes state; map/search work without geolocation permission; and relevant Supabase/Vercel logs show no visible production error.
 
 - [ ] **Step 8: Run post-deploy security/performance checks**
 
-Check Supabase security and performance advisors after any DB/function deployment and inspect Vercel runtime/build logs. Treat new security findings or production errors as release blockers; performance advisories are triaged and fixed when directly caused by RC2.
+Check Supabase security and performance advisors and inspect Vercel runtime/build logs. Treat new security findings or production errors caused by RC2 as release blockers.
 
-- [ ] **Step 9: Record release evidence in the PR and merge only after live GREEN**
+- [ ] **Step 9: Record release evidence and merge only after live GREEN**
 
-Record the exact commit SHA, GitHub release-gate run, Supabase function version/status, Vercel deployment ID/URL, and concise smoke-test result. Do not include secret values.
+Record exact commit SHA, GitHub release-gate run, Supabase function version/status, Vercel deployment ID/URL, and concise smoke-test result. Do not include secret values.
 
 ---
 
@@ -671,12 +685,18 @@ Record the exact commit SHA, GitHub release-gate run, Supabase function version/
 - Debounced/suppressed background discovery: Tasks 2–5.
 - Failure degradation: Tasks 3, 5, 10.
 - Compact preview and full profile: Tasks 6–7.
-- First-report transition: Tasks 7 and 10.
+- First-report transition: Tasks 6, 7, 10.
 - Mobile shell/search/nav/safe area/attribution: Task 8.
 - Nynorsk/English parity and PWA language: Tasks 8–9.
 - Security/geolocation constraints: Tasks 4, 11, 12.
 - Release gate: Task 11.
 - Live Førde smoke test and coordinated Supabase/Vercel deployment: Task 12.
+
+### Type consistency
+- `DiscoveryBounds` is reused end-to-end from map bounds → discovery helpers → `usePlaceDiscovery` → `discoverPlaces`.
+- `SenseMap.onPlaceSelected` consistently emits `PlaceSummary`, while routing still consumes `place.id` in `MapPage`.
+- `usePlaceDiscovery.refreshToken` feeds `useNearbyPlaces(..., { refreshToken })` and is not a duplicate data store.
+- `PlacePreview.onContribute(id)` consistently routes to `/places/:id?contribute=1`; `PlacePage` consumes that query flag and reuses `ContributionSheet`.
 
 ### Implementation rule
 At execution time, start from an isolated git worktree created via `superpowers:using-git-worktrees`, read both this plan and the linked spec, and use strict RED → GREEN → refactor cycles. After each task, review the diff and run the task-specific tests before committing. Before any claim that RC2 is complete or ready, invoke `superpowers:verification-before-completion` and use fresh command/deployment evidence.
